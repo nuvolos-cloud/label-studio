@@ -28,11 +28,26 @@ def create_index_sql(table_name, index_name, column_name, vendor='postgresql'):
         CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}");
         """
 
-def create_fk_sql(table_name, constraint_name, column_name, referenced_table, referenced_column):
-    return f"""
-    ALTER TABLE "{table_name}" DROP CONSTRAINT IF EXISTS "{constraint_name}";
-    ALTER TABLE "{table_name}" ADD CONSTRAINT "{constraint_name}" FOREIGN KEY ("{column_name}") REFERENCES "{referenced_table}" ("{referenced_column}") DEFERRABLE INITIALLY DEFERRED;
-    """
+def create_fk_sql(table_name, constraint_name, column_name, referenced_table, referenced_column, vendor='postgresql'):
+    if vendor == 'postgresql':
+        # PostgreSQL supports deferrable constraints
+        return f"""
+        ALTER TABLE "{table_name}" DROP CONSTRAINT IF EXISTS "{constraint_name}";
+        ALTER TABLE "{table_name}" ADD CONSTRAINT "{constraint_name}" FOREIGN KEY ("{column_name}") REFERENCES "{referenced_table}" ("{referenced_column}") DEFERRABLE INITIALLY DEFERRED;
+        """
+    elif vendor == 'mysql':
+        # MySQL doesn't support deferrable constraints
+        # Use a simpler approach: drop and recreate without DEFERRABLE
+        return f"""
+        ALTER TABLE {table_name} DROP FOREIGN KEY IF EXISTS {constraint_name};
+        ALTER TABLE {table_name} ADD CONSTRAINT {constraint_name} FOREIGN KEY ({column_name}) REFERENCES {referenced_table} ({referenced_column});
+        """
+    else:
+        # SQLite and others
+        return f"""
+        -- Foreign key constraint for {table_name}.{column_name}
+        -- Note: SQLite doesn't support ALTER TABLE ADD CONSTRAINT for foreign keys
+        """
 
 def drop_index_sql(table_name, index_name, column_name, vendor='postgresql'):
     if vendor == 'postgresql':
@@ -104,11 +119,13 @@ def forward_migration(migration_name, db_alias):
     for table in tables:
         index_sql = create_index_sql(table['table_name'], table['index_name'], table['column_name'], vendor)
         fk_sql = create_fk_sql(table['table_name'], table['fk_constraint'], table['column_name'], "task_completion",
-                               "id")
+                               "id", vendor)
 
         # Run index_sql
         cursor.execute(index_sql)
-        cursor.execute(fk_sql)
+        # Only run FK SQL for PostgreSQL and MySQL (SQLite doesn't support this type of FK alteration)
+        if vendor in ('postgresql', 'mysql'):
+            cursor.execute(fk_sql)
 
     migration.status = AsyncMigrationStatus.STATUS_FINISHED
     migration.save(using=db_alias)
