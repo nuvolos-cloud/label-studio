@@ -11,14 +11,27 @@ IS_SQLITE = settings.DJANGO_DB == settings.DJANGO_DB_SQLITE
 
 migration_name = '0057_annotation_proj_result_octlen_idx_async'
 
-sql_create_index = (
-    'CREATE INDEX CONCURRENTLY IF NOT EXISTS annotation_proj_result_octlen_idx '
-    'ON task_completion (project_id, octet_length(result::text) DESC) '
-    'INCLUDE (id);'
-)
-sql_drop_index = (
-    'DROP INDEX CONCURRENTLY IF EXISTS annotation_proj_result_octlen_idx;'
-)
+sql_create_index = {
+    'postgresql': (
+        'CREATE INDEX CONCURRENTLY IF NOT EXISTS annotation_proj_result_octlen_idx '
+        'ON task_completion (project_id, octet_length(result::text) DESC) '
+        'INCLUDE (id);'
+    ),
+    'mysql': (
+        'CREATE INDEX annotation_proj_result_octlen_idx '
+        'ON task_completion (project_id, (LENGTH(result)) DESC, id) '
+        'ALGORITHM=INPLACE, LOCK=NONE;'
+    ),
+}
+sql_drop_index = {
+    'postgresql': (
+        'DROP INDEX CONCURRENTLY IF EXISTS annotation_proj_result_octlen_idx;'
+    ),
+    'mysql': (
+        'DROP INDEX annotation_proj_result_octlen_idx ON task_completion '
+        'ALGORITHM=INPLACE, LOCK=NONE;'
+    ),
+}
 
 def forward_migration(migration_name, db_alias):
     migration, created = AsyncMigrationStatus.objects.using(db_alias).get_or_create(
@@ -31,7 +44,20 @@ def forward_migration(migration_name, db_alias):
     logger.info(f'Start async migration {migration_name}')
     from django.db import connections
     cursor = connections[db_alias].cursor()
-    cursor.execute(sql_create_index)
+    
+    # Get vendor-specific SQL
+    vendor = connections[db_alias].vendor
+    if vendor == 'postgresql':
+        sql = sql_create_index['postgresql']
+    elif vendor == 'mysql':
+        sql = sql_create_index['mysql']
+    else:
+        logger.warning(f'Unsupported vendor: {vendor}. Skipping index creation.')
+        migration.status = AsyncMigrationStatus.STATUS_FINISHED
+        migration.save(using=db_alias)
+        return
+    
+    cursor.execute(sql)
     migration.status = AsyncMigrationStatus.STATUS_FINISHED
     migration.save(using=db_alias)
     logger.info(f'Async migration {migration_name} complete')
@@ -44,7 +70,20 @@ def backward_migration(migration_name, db_alias):
     logger.info(f'Start revert of async migration {migration_name}')
     from django.db import connections
     cursor = connections[db_alias].cursor()
-    cursor.execute(sql_drop_index)
+    
+    # Get vendor-specific SQL
+    vendor = connections[db_alias].vendor
+    if vendor == 'postgresql':
+        sql = sql_drop_index['postgresql']
+    elif vendor == 'mysql':
+        sql = sql_drop_index['mysql']
+    else:
+        logger.warning(f'Unsupported vendor: {vendor}. Skipping index drop.')
+        migration.status = AsyncMigrationStatus.STATUS_FINISHED
+        migration.save(using=db_alias)
+        return
+    
+    cursor.execute(sql)
     migration.status = AsyncMigrationStatus.STATUS_FINISHED
     migration.save(using=db_alias)
     logger.info(f'Async migration {migration_name} revert complete')
@@ -52,7 +91,7 @@ def backward_migration(migration_name, db_alias):
 def forwards(apps, schema_editor):
     if IS_SQLITE:
         logger.info('SQLite execution')
-        logger.info('Skipping async index creation for non-PostgreSQL databases')
+        logger.info('Skipping async index creation for SQLite')
         return
 
     db_alias = schema_editor.connection.alias

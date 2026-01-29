@@ -15,12 +15,22 @@ IS_SQLITE = settings.DJANGO_DB == settings.DJANGO_DB_SQLITE
 
 migration_name = "0056_prediction_result_proj_gin_idx_async"
 
-SQL_CREATE_INDEX = (
-    "CREATE INDEX CONCURRENTLY IF NOT EXISTS tasks_predictions_result_proj_gin "
-    "ON prediction USING GIN (project_id, CAST(result AS text) gin_trgm_ops);"
-)
+SQL_CREATE_INDEX = {
+    'postgresql': (
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS tasks_predictions_result_proj_gin "
+        "ON prediction USING GIN (project_id, CAST(result AS text) gin_trgm_ops);"
+    ),
+    'mysql': (
+        "CREATE INDEX tasks_predictions_result_proj_gin "
+        "ON prediction (project_id, (CAST(result AS CHAR(255)))) "
+        "ALGORITHM=INPLACE, LOCK=NONE;"
+    ),
+}
 
-SQL_DROP_INDEX = "DROP INDEX CONCURRENTLY IF EXISTS tasks_predictions_result_proj_gin;"
+SQL_DROP_INDEX = {
+    'postgresql': "DROP INDEX CONCURRENTLY IF EXISTS tasks_predictions_result_proj_gin;",
+    'mysql': "DROP INDEX tasks_predictions_result_proj_gin ON prediction ALGORITHM=INPLACE, LOCK=NONE;",
+}
 
 def _forward(migration_name: str, db_alias: str):
     """Create the GIN index inside a dedicated job."""
@@ -35,9 +45,20 @@ def _forward(migration_name: str, db_alias: str):
 
     logger.info("Starting async migration %s", migration_name)
     from django.db import connections
+    
+    vendor = connections[db_alias].vendor
+    if vendor == 'postgresql':
+        sql = SQL_CREATE_INDEX['postgresql']
+    elif vendor == 'mysql':
+        sql = SQL_CREATE_INDEX['mysql']
+    else:
+        logger.warning("Unsupported vendor: %s. Skipping index creation.", vendor)
+        migration.status = AsyncMigrationStatus.STATUS_FINISHED
+        migration.save(using=db_alias)
+        return
 
     with connections[db_alias].cursor() as cursor:
-        cursor.execute(SQL_CREATE_INDEX)
+        cursor.execute(sql)
     migration.status = AsyncMigrationStatus.STATUS_FINISHED
     migration.save(using=db_alias)
     logger.info("Async migration %s complete", migration_name)
@@ -51,9 +72,20 @@ def _backward(migration_name: str, db_alias: str):
     )
     logger.info("Reverting async migration %s", migration_name)
     from django.db import connections
+    
+    vendor = connections[db_alias].vendor
+    if vendor == 'postgresql':
+        sql = SQL_DROP_INDEX['postgresql']
+    elif vendor == 'mysql':
+        sql = SQL_DROP_INDEX['mysql']
+    else:
+        logger.warning("Unsupported vendor: %s. Skipping index drop.", vendor)
+        migration.status = AsyncMigrationStatus.STATUS_FINISHED
+        migration.save(using=db_alias)
+        return
 
     with connections[db_alias].cursor() as cursor:
-        cursor.execute(SQL_DROP_INDEX)
+        cursor.execute(sql)
     migration.status = AsyncMigrationStatus.STATUS_FINISHED
     migration.save(using=db_alias)
     logger.info("Revert of async migration %s complete", migration_name)
@@ -64,9 +96,10 @@ def forwards(apps, schema_editor):
         logger.info("SQLite detected; skipping GIN index creation")
         return
 
-    # Only run on PostgreSQL
-    if not schema_editor.connection.vendor.startswith("postgres"):
-        logger.info("Database vendor: %s. Skipping index creation", schema_editor.connection.vendor)
+    # Run on PostgreSQL and MySQL
+    vendor = schema_editor.connection.vendor
+    if vendor not in ('postgresql', 'mysql') and not vendor.startswith("postgres"):
+        logger.info("Database vendor: %s. Skipping index creation", vendor)
         return
 
     db_alias = schema_editor.connection.alias
@@ -78,8 +111,9 @@ def backwards(apps, schema_editor):
         logger.info("SQLite detected; skipping GIN index drop")
         return
 
-    if not schema_editor.connection.vendor.startswith("postgres"):
-        logger.info("Database vendor: %s. Skipping index drop", schema_editor.connection.vendor)
+    vendor = schema_editor.connection.vendor
+    if vendor not in ('postgresql', 'mysql') and not vendor.startswith("postgres"):
+        logger.info("Database vendor: %s. Skipping index drop", vendor)
         return
 
     db_alias = schema_editor.connection.alias

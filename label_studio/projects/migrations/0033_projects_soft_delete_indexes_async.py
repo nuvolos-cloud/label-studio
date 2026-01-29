@@ -16,6 +16,12 @@ def forward_migration(migration_name, db_alias):
             'CREATE INDEX CONCURRENTLY IF NOT EXISTS project_deleted_at_idx ON project (deleted_at)',
             'CREATE INDEX CONCURRENTLY IF NOT EXISTS project_purge_at_idx ON project (purge_at)',
         ]
+    elif conn.vendor == 'mysql':
+        sqls = [
+            'CREATE INDEX project_org_deleted_idx ON project (organization_id, deleted_at) ALGORITHM=INPLACE, LOCK=NONE',
+            'CREATE INDEX project_deleted_at_idx ON project (deleted_at) ALGORITHM=INPLACE, LOCK=NONE',
+            'CREATE INDEX project_purge_at_idx ON project (purge_at) ALGORITHM=INPLACE, LOCK=NONE',
+        ]
     else:
         sqls = [
             'CREATE INDEX IF NOT EXISTS project_org_deleted_idx ON project (organization_id, deleted_at)',
@@ -37,6 +43,12 @@ def reverse_migration(migration_name, db_alias):
             'DROP INDEX CONCURRENTLY IF EXISTS project_org_deleted_idx',
             'DROP INDEX CONCURRENTLY IF EXISTS project_deleted_at_idx',
             'DROP INDEX CONCURRENTLY IF EXISTS project_purge_at_idx',
+        ]
+    elif conn.vendor == 'mysql':
+        sqls = [
+            'DROP INDEX project_org_deleted_idx ON project ALGORITHM=INPLACE, LOCK=NONE',
+            'DROP INDEX project_deleted_at_idx ON project ALGORITHM=INPLACE, LOCK=NONE',
+            'DROP INDEX project_purge_at_idx ON project ALGORITHM=INPLACE, LOCK=NONE',
         ]
     else:
         sqls = [

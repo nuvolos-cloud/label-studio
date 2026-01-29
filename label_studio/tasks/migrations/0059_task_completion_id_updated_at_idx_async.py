@@ -1,13 +1,26 @@
 from django.db import migrations
-from core.migration_helpers import make_sql_migration
+from core.migration_helpers import make_sql_migration_for_vendors
 
-sql_forwards = (
-    'CREATE INDEX CONCURRENTLY IF NOT EXISTS task_completion_id_updated_at_idx '
-    'ON task_completion (id, updated_at);'
-)
-sql_backwards = (
-    'DROP INDEX CONCURRENTLY IF EXISTS task_completion_id_updated_at_idx;'
-)
+sql_forwards = {
+    'postgresql': (
+        'CREATE INDEX CONCURRENTLY IF NOT EXISTS task_completion_id_updated_at_idx '
+        'ON task_completion (id, updated_at);'
+    ),
+    'mysql': (
+        'CREATE INDEX task_completion_id_updated_at_idx '
+        'ON task_completion (id, updated_at) '
+        'ALGORITHM=INPLACE, LOCK=NONE;'
+    ),
+}
+sql_backwards = {
+    'postgresql': (
+        'DROP INDEX CONCURRENTLY IF EXISTS task_completion_id_updated_at_idx;'
+    ),
+    'mysql': (
+        'DROP INDEX task_completion_id_updated_at_idx ON task_completion '
+        'ALGORITHM=INPLACE, LOCK=NONE;'
+    ),
+}
 
 class Migration(migrations.Migration):
     atomic = False
@@ -17,7 +30,7 @@ class Migration(migrations.Migration):
     ]
     operations = [
         migrations.RunPython(
-            *make_sql_migration(
+            *make_sql_migration_for_vendors(
                 sql_forwards,
                 sql_backwards,
                 apply_on_sqlite=False,
