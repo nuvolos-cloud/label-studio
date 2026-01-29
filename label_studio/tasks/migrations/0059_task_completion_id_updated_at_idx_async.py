@@ -7,8 +7,8 @@ sql_forwards = {
         'ON task_completion (id, updated_at);'
     ),
     'mysql': (
-        'CREATE INDEX task_completion_id_updated_at_idx '
-        'ON task_completion (id, updated_at) '
+        'ALTER TABLE task_completion '
+        'ADD INDEX task_completion_id_updated_at_idx (id, updated_at), '
         'ALGORITHM=INPLACE, LOCK=NONE;'
     ),
 }

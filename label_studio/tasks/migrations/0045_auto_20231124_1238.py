@@ -22,13 +22,13 @@ def async_index_creation(db_alias):
         )
     elif conn.vendor == 'mysql':
         create_index_sql_1 = (
-            'CREATE INDEX task_comple_project_0bc0be_idx '
-            'ON task_completion (project_id, completed_by_id) '
+            'ALTER TABLE task_completion '
+            'ADD INDEX task_comple_project_0bc0be_idx (project_id, completed_by_id), '
             'ALGORITHM=INPLACE, LOCK=NONE;'
         )
         create_index_sql_2 = (
-            'CREATE INDEX task_comple_task_id_a6bdec_idx '
-            'ON task_completion (task_id, id) '
+            'ALTER TABLE task_completion '
+            'ADD INDEX task_comple_task_id_a6bdec_idx (task_id, id), '
             'ALGORITHM=INPLACE, LOCK=NONE;'
         )
     else:

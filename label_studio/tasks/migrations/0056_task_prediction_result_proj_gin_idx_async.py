@@ -23,8 +23,8 @@ SQL_CREATE_INDEX = {
     'mysql': (
         # MySQL doesn't support GIN indexes or trigram search
         # Create a basic index on project_id only for MySQL
-        "CREATE INDEX tasks_predictions_result_proj_gin "
-        "ON prediction (project_id) "
+        "ALTER TABLE prediction "
+        "ADD INDEX tasks_predictions_result_proj_gin (project_id), "
         "ALGORITHM=INPLACE, LOCK=NONE;"
     ),
 }

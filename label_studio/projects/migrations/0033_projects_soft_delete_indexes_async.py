@@ -18,9 +18,9 @@ def forward_migration(migration_name, db_alias):
         ]
     elif conn.vendor == 'mysql':
         sqls = [
-            'CREATE INDEX project_org_deleted_idx ON project (organization_id, deleted_at) ALGORITHM=INPLACE, LOCK=NONE',
-            'CREATE INDEX project_deleted_at_idx ON project (deleted_at) ALGORITHM=INPLACE, LOCK=NONE',
-            'CREATE INDEX project_purge_at_idx ON project (purge_at) ALGORITHM=INPLACE, LOCK=NONE',
+            'ALTER TABLE project ADD INDEX project_org_deleted_idx (organization_id, deleted_at), ALGORITHM=INPLACE, LOCK=NONE',
+            'ALTER TABLE project ADD INDEX project_deleted_at_idx (deleted_at), ALGORITHM=INPLACE, LOCK=NONE',
+            'ALTER TABLE project ADD INDEX project_purge_at_idx (purge_at), ALGORITHM=INPLACE, LOCK=NONE',
         ]
     else:
         sqls = [
