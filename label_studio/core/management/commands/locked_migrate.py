@@ -34,7 +34,8 @@ class Command(MigrateCommand):
         connections[LOCKED_MIGRATE_CMD_CONNECTION_ALIAS] = separate_lock_connection
         try:
             # Only use advisory locks for PostgreSQL
-            if separate_lock_connection.vendor == 'postgresql':
+            # Check for both 'postgresql' and 'postgres' vendor names for consistency
+            if separate_lock_connection.vendor.startswith('postgres'):
                 # Use a transaction to hold the lock for the duration of the migration
                 with transaction.atomic(using=LOCKED_MIGRATE_CMD_CONNECTION_ALIAS):
                     # Attempt to acquire the lock with retries

@@ -1,5 +1,5 @@
 """Tests for the locked_migrate management command."""
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 from io import StringIO
 
 import pytest
@@ -137,6 +137,9 @@ class TestLockedMigrateCommand(TestCase):
         # Call command and expect TimeoutError
         with pytest.raises(TimeoutError, match='Failed to acquire PostgreSQL advisory transaction lock'):
             call_command('locked_migrate', '--no-color', verbosity=0)
+        
+        # Verify migration was not executed when lock acquisition failed
+        mock_super_handle.assert_not_called()
         
         # Verify connection was closed even on error
         mock_connection.close.assert_called_once()
