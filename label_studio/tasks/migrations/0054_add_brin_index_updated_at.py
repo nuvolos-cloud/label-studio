@@ -28,8 +28,8 @@ def forward_migration(migration_name, db_alias):
     elif conn.vendor == 'mysql':
         # MySQL doesn't support BRIN indexes, use regular B-tree index with online DDL
         sql = '''
-        CREATE INDEX task_updated_at_brin_idx 
-        ON task (updated_at) 
+        ALTER TABLE task 
+        ADD INDEX task_updated_at_brin_idx (updated_at), 
         ALGORITHM=INPLACE, LOCK=NONE;
         '''
     else:

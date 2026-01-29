@@ -25,12 +25,25 @@ def forward_migration(migration_name, db_alias):
         SET created_at = datetime(expire_at, %s);
         """
         sql_params = (f'-{settings.TASK_LOCK_TTL} seconds',)
-    else:
+    elif conn.vendor == 'postgresql':
         sql_update_created_at = """
         UPDATE tasks_tasklock
         SET created_at = expire_at - INTERVAL %s;
         """
-        sql_params = ('%s seconds' % settings.TASK_LOCK_TTL,)
+        sql_params = (f'{settings.TASK_LOCK_TTL} seconds',)
+    elif conn.vendor == 'mysql':
+        sql_update_created_at = f"""
+        UPDATE tasks_tasklock
+        SET created_at = expire_at - INTERVAL {settings.TASK_LOCK_TTL} SECOND;
+        """
+        sql_params = ()
+    else:
+        logger.warning(f'Unsupported database vendor: {conn.vendor}')
+        sql_update_created_at = """
+        UPDATE tasks_tasklock
+        SET created_at = expire_at - INTERVAL %s;
+        """
+        sql_params = (f'{settings.TASK_LOCK_TTL} seconds',)
 
     with conn.cursor() as cursor:
         cursor.execute(sql_update_created_at, sql_params)
