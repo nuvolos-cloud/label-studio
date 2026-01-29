@@ -33,13 +33,21 @@ class Command(MigrateCommand):
         separate_lock_connection = connections.create_connection('default')
         connections[LOCKED_MIGRATE_CMD_CONNECTION_ALIAS] = separate_lock_connection
         try:
-            # Use a transaction to hold the lock for the duration of the migration
-            with transaction.atomic(using=LOCKED_MIGRATE_CMD_CONNECTION_ALIAS):
-                # Attempt to acquire the lock with retries
-                self.acquire_lock_with_retry(separate_lock_connection, lock_id)
-                # Run the standard Django migration once lock is acquired
+            # Only use advisory locks for PostgreSQL
+            # Check for both 'postgresql' and 'postgres' vendor names for consistency
+            if separate_lock_connection.vendor.startswith('postgres'):
+                # Use a transaction to hold the lock for the duration of the migration
+                with transaction.atomic(using=LOCKED_MIGRATE_CMD_CONNECTION_ALIAS):
+                    # Attempt to acquire the lock with retries
+                    self.acquire_lock_with_retry(separate_lock_connection, lock_id)
+                    # Run the standard Django migration once lock is acquired
+                    super().handle(*args, **options)
+                logger.info('Migration complete, the migration lock has now been released.')
+            else:
+                # For MySQL/MariaDB and other databases, run migrations without advisory locks
+                logger.info(f'Database vendor is {separate_lock_connection.vendor}, skipping advisory lock.')
                 super().handle(*args, **options)
-            logger.info('Migration complete, the migration lock has now been released.')
+                logger.info('Migration complete.')
         finally:
             # Ensure the lock connection is closed to free resources
             separate_lock_connection.close()

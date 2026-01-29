@@ -8,26 +8,44 @@ logger = logging.getLogger(__name__)
 
 def async_index_creation(db_alias):
     from django.db import connections
-    create_index_sql_1 = (
-        'CREATE INDEX CONCURRENTLY IF NOT EXISTS task_comple_project_0bc0be_idx '
-        'ON task_completion (project_id, completed_by_id);'
-    )
+    
+    conn = connections[db_alias]
+    
+    if conn.vendor == 'postgresql':
+        create_index_sql_1 = (
+            'CREATE INDEX CONCURRENTLY IF NOT EXISTS task_comple_project_0bc0be_idx '
+            'ON task_completion (project_id, completed_by_id);'
+        )
+        create_index_sql_2 = (
+            'CREATE INDEX CONCURRENTLY IF NOT EXISTS task_comple_task_id_a6bdec_idx '
+            'ON task_completion (task_id, id);'
+        )
+    elif conn.vendor == 'mysql':
+        create_index_sql_1 = (
+            'CREATE INDEX task_comple_project_0bc0be_idx '
+            'ON task_completion (project_id, completed_by_id) '
+            'ALGORITHM=INPLACE, LOCK=NONE;'
+        )
+        create_index_sql_2 = (
+            'CREATE INDEX task_comple_task_id_a6bdec_idx '
+            'ON task_completion (task_id, id) '
+            'ALGORITHM=INPLACE, LOCK=NONE;'
+        )
+    else:
+        logger.info(f'Database vendor: {conn.vendor}')
+        logger.info('Skipping async index creation for unsupported database')
+        return
 
-    create_index_sql_2 = (
-        'CREATE INDEX CONCURRENTLY IF NOT EXISTS task_comple_task_id_a6bdec_idx '
-        'ON task_completion (task_id, id);'
-    )
-
-    with connections[db_alias].schema_editor(atomic=False) as schema_editor:
-        schema_editor.execute(create_index_sql_1)
-        schema_editor.execute(create_index_sql_2)
-        logger.info('Indexes created concurrently on annotation model')
+    with conn.cursor() as cursor:
+        cursor.execute(create_index_sql_1)
+        cursor.execute(create_index_sql_2)
+        logger.info('Indexes created on annotation model')
 
 def forwards(apps, schema_editor):
     database_vendor = schema_editor.connection.vendor
-    if database_vendor != 'postgresql':
+    if database_vendor not in ('postgresql', 'mysql'):
         logger.info(f'Database vendor: {database_vendor}')
-        logger.info('Skipping async index creation for non-PostgreSQL databases')
+        logger.info('Skipping async index creation for non-PostgreSQL/MySQL databases')
         return
 
     # Schedule the index creation job asynchronously using RQ worker

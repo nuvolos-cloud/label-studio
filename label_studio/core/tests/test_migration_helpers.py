@@ -1,9 +1,179 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from core.migration_helpers import execute_sql_job, make_sql_migration
+from core.migration_helpers import execute_sql_job, make_sql_migration, get_sql_for_vendor, make_sql_migration_for_vendors
 from core.models import AsyncMigrationStatus
 from django.test import TestCase, override_settings
+
+
+class TestGetSqlForVendor(TestCase):
+    """Test get_sql_for_vendor function."""
+
+    def test_returns_postgresql_sql(self):
+        """Test that PostgreSQL SQL is returned for postgres vendor."""
+        sql_dict = {
+            'postgresql': 'CREATE INDEX CONCURRENTLY idx ON table (col);',
+            'mysql': 'CREATE INDEX idx ON table (col);',
+        }
+        result = get_sql_for_vendor(sql_dict, 'postgresql')
+        assert result == sql_dict['postgresql']
+
+    def test_normalizes_postgres_vendor_name(self):
+        """Test that 'postgres' is normalized to 'postgresql'."""
+        sql_dict = {
+            'postgresql': 'CREATE INDEX CONCURRENTLY idx ON table (col);',
+            'mysql': 'CREATE INDEX idx ON table (col);',
+        }
+        result = get_sql_for_vendor(sql_dict, 'postgres')
+        assert result == sql_dict['postgresql']
+
+    def test_returns_mysql_sql(self):
+        """Test that MySQL SQL is returned for mysql vendor."""
+        sql_dict = {
+            'postgresql': 'CREATE INDEX CONCURRENTLY idx ON table (col);',
+            'mysql': 'CREATE INDEX idx ON table (col) ALGORITHM=INPLACE;',
+        }
+        result = get_sql_for_vendor(sql_dict, 'mysql')
+        assert result == sql_dict['mysql']
+
+    def test_returns_default_sql_when_vendor_not_found(self):
+        """Test that default SQL is returned when vendor not found."""
+        sql_dict = {
+            'postgresql': 'CREATE INDEX CONCURRENTLY idx ON table (col);',
+            'default': 'CREATE INDEX idx ON table (col);',
+        }
+        result = get_sql_for_vendor(sql_dict, 'unknown')
+        assert result == sql_dict['default']
+
+    def test_raises_when_vendor_not_found_and_no_default(self):
+        """Test that ValueError is raised when vendor not found and no default."""
+        sql_dict = {
+            'postgresql': 'CREATE INDEX CONCURRENTLY idx ON table (col);',
+        }
+        with pytest.raises(ValueError, match="No SQL found for vendor 'mysql'"):
+            get_sql_for_vendor(sql_dict, 'mysql')
+
+
+class TestMakeSqlMigrationForVendors(TestCase):
+    """Test make_sql_migration_for_vendors function."""
+
+    def setUp(self):
+        self.sql_forwards = {
+            'postgresql': 'CREATE INDEX CONCURRENTLY idx ON table (col);',
+            'mysql': 'CREATE INDEX idx ON table (col) ALGORITHM=INPLACE, LOCK=NONE;',
+        }
+        self.sql_backwards = {
+            'postgresql': 'DROP INDEX CONCURRENTLY idx;',
+            'mysql': 'DROP INDEX idx ON table ALGORITHM=INPLACE, LOCK=NONE;',
+        }
+        self.migration_name = 'test.migrations.test_migration'
+
+    def test_requires_migration_name(self):
+        """Test that migration_name is required."""
+        with pytest.raises(ValueError, match='explicit migration_name'):
+            make_sql_migration_for_vendors(
+                self.sql_forwards,
+                self.sql_backwards,
+            )
+
+    @override_settings(ALLOW_SCHEDULED_MIGRATIONS=False)
+    @patch('core.migration_helpers.start_job_async_or_sync')
+    def test_uses_postgresql_sql_for_postgres_vendor(self, mock_start):
+        """Test that PostgreSQL SQL is used for postgres vendor."""
+        forwards, backwards = make_sql_migration_for_vendors(
+            self.sql_forwards,
+            self.sql_backwards,
+            migration_name=self.migration_name,
+        )
+
+        apps = MagicMock()
+        schema_editor = MagicMock()
+        schema_editor.connection.vendor = 'postgresql'
+
+        forwards(apps, schema_editor)
+
+        mock_start.assert_called_once()
+        args, kwargs = mock_start.call_args
+        assert kwargs['sql'] == self.sql_forwards['postgresql']
+
+    @override_settings(ALLOW_SCHEDULED_MIGRATIONS=False)
+    @patch('core.migration_helpers.start_job_async_or_sync')
+    def test_uses_mysql_sql_for_mysql_vendor(self, mock_start):
+        """Test that MySQL SQL is used for mysql vendor."""
+        forwards, backwards = make_sql_migration_for_vendors(
+            self.sql_forwards,
+            self.sql_backwards,
+            migration_name=self.migration_name,
+        )
+
+        apps = MagicMock()
+        schema_editor = MagicMock()
+        schema_editor.connection.vendor = 'mysql'
+
+        forwards(apps, schema_editor)
+
+        mock_start.assert_called_once()
+        args, kwargs = mock_start.call_args
+        assert kwargs['sql'] == self.sql_forwards['mysql']
+
+    @override_settings(ALLOW_SCHEDULED_MIGRATIONS=False)
+    def test_skips_when_vendor_not_supported(self):
+        """Test that migration is skipped when vendor not in SQL dict."""
+        forwards, backwards = make_sql_migration_for_vendors(
+            self.sql_forwards,
+            self.sql_backwards,
+            migration_name=self.migration_name,
+        )
+
+        apps = MagicMock()
+        schema_editor = MagicMock()
+        schema_editor.connection.vendor = 'unknown'
+
+        # Should return early without error
+        forwards(apps, schema_editor)
+
+        # No migration status should be created
+        assert not AsyncMigrationStatus.objects.filter(name=self.migration_name).exists()
+
+    @override_settings(ALLOW_SCHEDULED_MIGRATIONS=False)
+    @patch('core.migration_helpers.start_job_async_or_sync')
+    def test_works_with_string_sql(self, mock_start):
+        """Test that function works with string SQL (backward compatibility)."""
+        forwards, backwards = make_sql_migration_for_vendors(
+            'CREATE INDEX idx ON table (col);',
+            'DROP INDEX idx;',
+            migration_name=self.migration_name,
+        )
+
+        apps = MagicMock()
+        schema_editor = MagicMock()
+        schema_editor.connection.vendor = 'postgresql'
+
+        forwards(apps, schema_editor)
+
+        mock_start.assert_called_once()
+        args, kwargs = mock_start.call_args
+        assert kwargs['sql'] == 'CREATE INDEX idx ON table (col);'
+
+    @patch('core.migration_helpers.start_job_async_or_sync')
+    def test_backwards_uses_vendor_specific_sql(self, mock_start):
+        """Test that backwards migration uses vendor-specific SQL."""
+        forwards, backwards = make_sql_migration_for_vendors(
+            self.sql_forwards,
+            self.sql_backwards,
+            migration_name=self.migration_name,
+        )
+
+        apps = MagicMock()
+        schema_editor = MagicMock()
+        schema_editor.connection.vendor = 'mysql'
+
+        backwards(apps, schema_editor)
+
+        mock_start.assert_called_once()
+        args, kwargs = mock_start.call_args
+        assert kwargs['sql'] == self.sql_backwards['mysql']
+        assert kwargs['reverse'] is True
 
 
 class TestExecuteSqlJob(TestCase):

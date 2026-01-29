@@ -14,21 +14,54 @@ logger = logging.getLogger(__name__)
 IS_SQLITE = connection.vendor == 'sqlite'
 migration_name = '0017_auto_20240731_1638'
 
-def create_index_sql(table_name, index_name, column_name):
-    return f"""
-    CREATE INDEX CONCURRENTLY IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}");
-    """
+def create_index_sql(table_name, index_name, column_name, vendor='postgresql'):
+    if vendor == 'postgresql':
+        return f"""
+        CREATE INDEX CONCURRENTLY IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}");
+        """
+    elif vendor == 'mysql':
+        return f"""
+        CREATE INDEX {index_name} ON {table_name} ({column_name}) ALGORITHM=INPLACE, LOCK=NONE;
+        """
+    else:
+        return f"""
+        CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}");
+        """
 
-def create_fk_sql(table_name, constraint_name, column_name, referenced_table, referenced_column):
-    return f"""
-    ALTER TABLE "{table_name}" DROP CONSTRAINT IF EXISTS "{constraint_name}";
-    ALTER TABLE "{table_name}" ADD CONSTRAINT "{constraint_name}" FOREIGN KEY ("{column_name}") REFERENCES "{referenced_table}" ("{referenced_column}") DEFERRABLE INITIALLY DEFERRED;
-    """
+def create_fk_sql(table_name, constraint_name, column_name, referenced_table, referenced_column, vendor='postgresql'):
+    if vendor == 'postgresql':
+        # PostgreSQL supports deferrable constraints
+        return f"""
+        ALTER TABLE "{table_name}" DROP CONSTRAINT IF EXISTS "{constraint_name}";
+        ALTER TABLE "{table_name}" ADD CONSTRAINT "{constraint_name}" FOREIGN KEY ("{column_name}") REFERENCES "{referenced_table}" ("{referenced_column}") DEFERRABLE INITIALLY DEFERRED;
+        """
+    elif vendor == 'mysql':
+        # MySQL doesn't support deferrable constraints
+        # Use a simpler approach: drop and recreate without DEFERRABLE
+        return f"""
+        ALTER TABLE {table_name} DROP FOREIGN KEY IF EXISTS {constraint_name};
+        ALTER TABLE {table_name} ADD CONSTRAINT {constraint_name} FOREIGN KEY ({column_name}) REFERENCES {referenced_table} ({referenced_column});
+        """
+    else:
+        # SQLite and others
+        return f"""
+        -- Foreign key constraint for {table_name}.{column_name}
+        -- Note: SQLite doesn't support ALTER TABLE ADD CONSTRAINT for foreign keys
+        """
 
-def drop_index_sql(table_name, index_name, column_name):
-    return f"""
-    DROP INDEX CONCURRENTLY IF EXISTS "{index_name}";
-    """
+def drop_index_sql(table_name, index_name, column_name, vendor='postgresql'):
+    if vendor == 'postgresql':
+        return f"""
+        DROP INDEX CONCURRENTLY IF EXISTS "{index_name}";
+        """
+    elif vendor == 'mysql':
+        return f"""
+        ALTER TABLE {table_name} DROP INDEX {index_name}, ALGORITHM=INPLACE, LOCK=NONE;
+        """
+    else:
+        return f"""
+        DROP INDEX IF EXISTS "{index_name}";
+        """
 
 tables = [
     {
@@ -81,14 +114,18 @@ def forward_migration(migration_name, db_alias):
     # Get db cursor
     from django.db import connections
     cursor = connections[db_alias].cursor()
+    vendor = connections[db_alias].vendor
+    
     for table in tables:
-        index_sql = create_index_sql(table['table_name'], table['index_name'], table['column_name'])
+        index_sql = create_index_sql(table['table_name'], table['index_name'], table['column_name'], vendor)
         fk_sql = create_fk_sql(table['table_name'], table['fk_constraint'], table['column_name'], "task_completion",
-                               "id")
+                               "id", vendor)
 
         # Run index_sql
         cursor.execute(index_sql)
-        cursor.execute(fk_sql)
+        # Only run FK SQL for PostgreSQL and MySQL (SQLite doesn't support this type of FK alteration)
+        if vendor in ('postgresql', 'mysql'):
+            cursor.execute(fk_sql)
 
     migration.status = AsyncMigrationStatus.STATUS_FINISHED
     migration.save(using=db_alias)
@@ -108,8 +145,10 @@ def reverse_migration(migration_name, db_alias):
     # Get db cursor
     from django.db import connections
     cursor = connections[db_alias].cursor()
+    vendor = connections[db_alias].vendor
+    
     for table in tables:
-        reverse_sql = drop_index_sql(table['table_name'], table['index_name'], table['column_name'])
+        reverse_sql = drop_index_sql(table['table_name'], table['index_name'], table['column_name'], vendor)
         # Run reverse_sql
         cursor.execute(reverse_sql)
 
