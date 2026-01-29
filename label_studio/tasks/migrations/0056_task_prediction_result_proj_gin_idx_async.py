@@ -21,15 +21,20 @@ SQL_CREATE_INDEX = {
         "ON prediction USING GIN (project_id, CAST(result AS text) gin_trgm_ops);"
     ),
     'mysql': (
+        # MySQL doesn't support GIN indexes or trigram search
+        # Create a basic index on project_id only for MySQL
         "CREATE INDEX tasks_predictions_result_proj_gin "
-        "ON prediction (project_id, (CAST(result AS CHAR(255)))) "
+        "ON prediction (project_id) "
         "ALGORITHM=INPLACE, LOCK=NONE;"
     ),
 }
 
 SQL_DROP_INDEX = {
     'postgresql': "DROP INDEX CONCURRENTLY IF EXISTS tasks_predictions_result_proj_gin;",
-    'mysql': "DROP INDEX tasks_predictions_result_proj_gin ON prediction ALGORITHM=INPLACE, LOCK=NONE;",
+    'mysql': (
+        "ALTER TABLE prediction DROP INDEX tasks_predictions_result_proj_gin, "
+        "ALGORITHM=INPLACE, LOCK=NONE;"
+    ),
 }
 
 def _forward(migration_name: str, db_alias: str):
@@ -98,12 +103,11 @@ def forwards(apps, schema_editor):
 
     # Run on PostgreSQL and MySQL
     vendor = schema_editor.connection.vendor
-    if vendor not in ('postgresql', 'mysql') and not vendor.startswith("postgres"):
+    if vendor == 'postgresql' or vendor.startswith('postgres') or vendor == 'mysql':
+        db_alias = schema_editor.connection.alias
+        start_job_async_or_sync(_forward, migration_name=migration_name, db_alias=db_alias)
+    else:
         logger.info("Database vendor: %s. Skipping index creation", vendor)
-        return
-
-    db_alias = schema_editor.connection.alias
-    start_job_async_or_sync(_forward, migration_name=migration_name, db_alias=db_alias)
 
 
 def backwards(apps, schema_editor):
@@ -112,12 +116,11 @@ def backwards(apps, schema_editor):
         return
 
     vendor = schema_editor.connection.vendor
-    if vendor not in ('postgresql', 'mysql') and not vendor.startswith("postgres"):
+    if vendor == 'postgresql' or vendor.startswith('postgres') or vendor == 'mysql':
+        db_alias = schema_editor.connection.alias
+        start_job_async_or_sync(_backward, migration_name=migration_name, db_alias=db_alias)
+    else:
         logger.info("Database vendor: %s. Skipping index drop", vendor)
-        return
-
-    db_alias = schema_editor.connection.alias
-    start_job_async_or_sync(_backward, migration_name=migration_name, db_alias=db_alias)
 
 
 

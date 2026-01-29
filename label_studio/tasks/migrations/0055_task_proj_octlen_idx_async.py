@@ -17,19 +17,13 @@ sql_create_index = {
         'ON task (project_id, octet_length(data::text) DESC) '
         'INCLUDE (id);'
     ),
-    'mysql': (
-        'CREATE INDEX task_proj_octlen_idx '
-        'ON task (project_id, (LENGTH(data)) DESC, id) '
-        'ALGORITHM=INPLACE, LOCK=NONE;'
-    ),
+    # MySQL/MariaDB doesn't support functional indexes or INCLUDE clause
+    # Skip this optimization for MySQL - it will use full table scans when needed
+    # For better performance, consider adding a generated column in a separate migration
 }
 sql_drop_index = {
     'postgresql': (
         'DROP INDEX CONCURRENTLY IF EXISTS task_proj_octlen_idx;'
-    ),
-    'mysql': (
-        'DROP INDEX task_proj_octlen_idx ON task '
-        'ALGORITHM=INPLACE, LOCK=NONE;'
     ),
 }
 
@@ -43,21 +37,19 @@ def forward_migration(migration_name, db_alias):
     
     logger.info(f'Start async migration {migration_name}')
     from django.db import connections
-    cursor = connections[db_alias].cursor()
     
     # Get vendor-specific SQL
     vendor = connections[db_alias].vendor
     if vendor == 'postgresql':
+        cursor = connections[db_alias].cursor()
         sql = sql_create_index['postgresql']
+        cursor.execute(sql)
     elif vendor == 'mysql':
-        sql = sql_create_index['mysql']
+        # Skip on MySQL - functional indexes not supported in MariaDB 10.11
+        logger.info(f'Skipping index creation on MySQL (functional indexes not supported in MariaDB 10.11)')
     else:
         logger.warning(f'Unsupported vendor: {vendor}. Skipping index creation.')
-        migration.status = AsyncMigrationStatus.STATUS_FINISHED
-        migration.save(using=db_alias)
-        return
     
-    cursor.execute(sql)
     migration.status = AsyncMigrationStatus.STATUS_FINISHED
     migration.save(using=db_alias)
     logger.info(f'Async migration {migration_name} complete')
@@ -69,21 +61,19 @@ def backward_migration(migration_name, db_alias):
     )
     logger.info(f'Start revert of async migration {migration_name}')
     from django.db import connections
-    cursor = connections[db_alias].cursor()
     
     # Get vendor-specific SQL
     vendor = connections[db_alias].vendor
     if vendor == 'postgresql':
+        cursor = connections[db_alias].cursor()
         sql = sql_drop_index['postgresql']
+        cursor.execute(sql)
     elif vendor == 'mysql':
-        sql = sql_drop_index['mysql']
+        # No index was created on MySQL, nothing to drop
+        logger.info(f'Skipping index drop on MySQL (index was not created)')
     else:
         logger.warning(f'Unsupported vendor: {vendor}. Skipping index drop.')
-        migration.status = AsyncMigrationStatus.STATUS_FINISHED
-        migration.save(using=db_alias)
-        return
     
-    cursor.execute(sql)
     migration.status = AsyncMigrationStatus.STATUS_FINISHED
     migration.save(using=db_alias)
     logger.info(f'Async migration {migration_name} revert complete')

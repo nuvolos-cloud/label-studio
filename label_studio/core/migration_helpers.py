@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple, Union
 
 from core.redis import start_job_async_or_sync
 from django.conf import settings
@@ -135,12 +135,12 @@ def make_sql_migration(
 
 
 def make_sql_migration_for_vendors(
-    sql_forwards: Dict[str, str] | str,
-    sql_backwards: Dict[str, str] | str,
+    sql_forwards: Union[Dict[str, str], str],
+    sql_backwards: Union[Dict[str, str], str],
     *,
     apply_on_sqlite: bool = False,
     execute_immediately: bool = False,
-    migration_name: str | None = None,
+    migration_name: Optional[str] = None,
 ) -> Tuple[Callable, Callable]:
     """Return (forwards, backwards) for migrations.RunPython with vendor-specific SQL.
     
@@ -194,6 +194,10 @@ def make_sql_migration_for_vendors(
             )
     
     def backwards(apps, schema_editor):  # noqa: ARG001
+        if schema_editor.connection.vendor == 'sqlite' and not apply_on_sqlite:
+            logger.info("Skipping reverse migration for SQLite (apply_on_sqlite=False)")
+            return
+        
         # Get vendor-specific SQL
         if isinstance(sql_backwards, dict):
             try:

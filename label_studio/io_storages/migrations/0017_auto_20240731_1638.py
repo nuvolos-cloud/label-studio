@@ -41,7 +41,7 @@ def drop_index_sql(table_name, index_name, column_name, vendor='postgresql'):
         """
     elif vendor == 'mysql':
         return f"""
-        DROP INDEX {index_name} ON {table_name} ALGORITHM=INPLACE, LOCK=NONE;
+        ALTER TABLE {table_name} DROP INDEX {index_name}, ALGORITHM=INPLACE, LOCK=NONE;
         """
     else:
         return f"""

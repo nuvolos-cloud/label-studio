@@ -17,7 +17,7 @@ sql_backwards = {
         'DROP INDEX CONCURRENTLY IF EXISTS task_completion_id_updated_at_idx;'
     ),
     'mysql': (
-        'DROP INDEX task_completion_id_updated_at_idx ON task_completion '
+        'ALTER TABLE task_completion DROP INDEX task_completion_id_updated_at_idx, '
         'ALGORITHM=INPLACE, LOCK=NONE;'
     ),
 }

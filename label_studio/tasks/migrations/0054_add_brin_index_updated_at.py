@@ -58,7 +58,7 @@ def reverse_migration(migration_name, db_alias):
     if conn.vendor == 'postgresql':
         sql = 'DROP INDEX CONCURRENTLY IF EXISTS "task_updated_at_brin_idx";'
     elif conn.vendor == 'mysql':
-        sql = 'DROP INDEX task_updated_at_brin_idx ON task ALGORITHM=INPLACE, LOCK=NONE;'
+        sql = 'ALTER TABLE task DROP INDEX task_updated_at_brin_idx, ALGORITHM=INPLACE, LOCK=NONE;'
     else:
         sql = 'DROP INDEX IF EXISTS "task_updated_at_brin_idx";'
     

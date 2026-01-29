@@ -46,9 +46,9 @@ def reverse_migration(migration_name, db_alias):
         ]
     elif conn.vendor == 'mysql':
         sqls = [
-            'DROP INDEX project_org_deleted_idx ON project ALGORITHM=INPLACE, LOCK=NONE',
-            'DROP INDEX project_deleted_at_idx ON project ALGORITHM=INPLACE, LOCK=NONE',
-            'DROP INDEX project_purge_at_idx ON project ALGORITHM=INPLACE, LOCK=NONE',
+            'ALTER TABLE project DROP INDEX project_org_deleted_idx, ALGORITHM=INPLACE, LOCK=NONE',
+            'ALTER TABLE project DROP INDEX project_deleted_at_idx, ALGORITHM=INPLACE, LOCK=NONE',
+            'ALTER TABLE project DROP INDEX project_purge_at_idx, ALGORITHM=INPLACE, LOCK=NONE',
         ]
     else:
         sqls = [
