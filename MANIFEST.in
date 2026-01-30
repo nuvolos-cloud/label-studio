@@ -1,6 +1,6 @@
 # react LSF / react-app with dm
 recursive-include web/dist/libs/editor *
-include web/dist/apps/labelstudio/*
+recursive-include web/dist/apps/labelstudio *
 recursive-include web/dist/libs/datamanager/ *
 
 # html template files
