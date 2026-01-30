@@ -2372,11 +2372,11 @@
       "contextTargets": [],
       "rules": [],
       "fallthrough": {
-        "variation": 0
+        "variation": 1
       },
       "offVariation": 1,
       "variations": [
-        true,
+        false,
         false
       ],
       "clientSideAvailability": {
@@ -2399,11 +2399,11 @@
       "contextTargets": [],
       "rules": [],
       "fallthrough": {
-        "variation": 0
+        "variation": 1
       },
       "offVariation": 1,
       "variations": [
-        true,
+        false,
         false
       ],
       "clientSideAvailability": {
