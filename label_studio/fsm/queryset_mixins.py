@@ -115,6 +115,17 @@ class FSMStateQuerySetMixin:
         entity_field_name = state_model._get_entity_field_name()
         fk_field = f'{entity_field_name}_id'
 
+        # MYSQL COMPATIBILITY FIX: Disable state annotation for MySQL
+        # OuterRef('pk') generates invalid SQL in MySQL with complex queries
+        # that reference incorrect table aliases (e.g., 'project.id' instead of proper alias)
+        # This is a known Django ORM limitation with MySQL subqueries.
+        # Since FSM state annotation is an enterprise feature for workflow management,
+        # we disable it entirely for MySQL deployments to maintain compatibility.
+        from django.db import connection
+        if connection.vendor == 'mysql':
+            logger.debug(f'MySQL detected: Skipping FSM state annotation for {entity_name} (OuterRef incompatibility)')
+            return self
+
         # Create subquery to get current state using UUID7 natural ordering
         # This is extremely efficient because:
         # 1. UUID7 provides natural time ordering (latest = highest ID)
