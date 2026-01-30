@@ -85,6 +85,28 @@ def serve(request, path, document_root=None, show_indexes=False, manifest_asset_
         
         fullpath = safe_join_relaxed(document_root, possible_asset)
         logger.debug(f"Manifest full path: {fullpath}")
+        
+        # If still not found, try to find any CSS file matching the pattern
+        if not fullpath.exists():
+            logger.warning(f"Manifest file not found: {fullpath}, searching for alternatives")
+            # For main.css, look for main.*.css pattern
+            if path.endswith('.css') or possible_asset.endswith('.css'):
+                base_name = path.replace('.css', '').split('/')[-1]
+                search_pattern = f"{base_name}.*.css" if base_name else "*.css"
+                doc_root = Path(document_root)
+                logger.debug(f"Searching for pattern: {search_pattern} in {doc_root}")
+                
+                # Try to find matching files
+                matches = list(doc_root.glob(search_pattern))
+                if matches:
+                    fullpath = matches[0]  # Use the first match
+                    logger.info(f"Found alternative file: {fullpath}")
+                else:
+                    # Try searching subdirectories
+                    matches = list(doc_root.rglob(search_pattern))
+                    if matches:
+                        fullpath = matches[0]
+                        logger.info(f"Found alternative file in subdirectory: {fullpath}")
     
     if not fullpath.exists():
         logger.warning(f"File not found: {fullpath}")
