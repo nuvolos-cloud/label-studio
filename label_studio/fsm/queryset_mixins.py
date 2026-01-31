@@ -68,72 +68,19 @@ class FSMStateQuerySetMixin:
         """
         Annotate the queryset with the current FSM state.
 
-        Adds a `current_state` field to each object containing the current
-        state string value. This is done using an efficient subquery that
-        leverages UUID7 natural ordering to prevent N+1 queries.
+        DISABLED FOR MYSQL/MARIADB COMPATIBILITY:
+        The subquery pattern using OuterRef('pk') generates invalid SQL in MySQL/MariaDB
+        that references incorrect table aliases (e.g., 'project.id' instead of proper alias).
+        This is a known Django ORM limitation with MySQL subqueries in complex queries.
+        
+        Since FSM state annotation is an enterprise feature for workflow management
+        and not critical for core Label Studio functionality, we disable it entirely
+        to maintain MySQL/MariaDB compatibility.
 
         Returns:
-            QuerySet: The annotated queryset with `current_state` field
-
-        Example:
-            # Chain after filters
-            tasks = Task.objects.filter(project=project).with_state()
-
-            # Or use from manager
-            tasks = Task.objects.with_state().filter(project=project)
-
-            # Multiple chaining
-            tasks = Task.objects.filter(is_labeled=True).with_state().order_by('-created_at')
-
-        Note:
-            - If FSM feature flag is disabled, returns queryset unchanged (zero impact)
-            - If no state exists for an entity, `current_state` will be None
-            - The state is read-only and should not be modified directly
+            QuerySet: The queryset unchanged (no annotation added)
         """
-        # Check only fflag_feat_fit_568_finite_state_management for background FSM processes.
-        # This allows background processes to annotate current_state for internal use.
-        # UI/API serializers separately check both fflag_feat_fit_568 AND fflag_feat_fit_710
-        # before exposing state data to consumers.
-        user = CurrentContext.get_user()
-        if not flag_set('fflag_feat_fit_568_finite_state_management', user=user):
-            logger.debug('FSM feature flag disabled, skipping state annotation')
-            return self
-
-        # Get the entity name from the model
-        entity_name = self.model._meta.model_name
-
-        # Get the state model for this entity
-        state_model = get_state_model(entity_name)
-
-        if not state_model:
-            # No state model registered, return queryset as-is
-            logger.debug(f'No state model registered for {entity_name}, skipping annotation')
-            return self
-
-        # Get the foreign key field name on the state model
-        # e.g., 'task_id' for TaskState
-        entity_field_name = state_model._get_entity_field_name()
-        fk_field = f'{entity_field_name}_id'
-
-        # MYSQL COMPATIBILITY FIX: Disable state annotation for MySQL
-        # OuterRef('pk') generates invalid SQL in MySQL with complex queries
-        # that reference incorrect table aliases (e.g., 'project.id' instead of proper alias)
-        # This is a known Django ORM limitation with MySQL subqueries.
-        # Since FSM state annotation is an enterprise feature for workflow management,
-        # we disable it entirely for MySQL deployments to maintain compatibility.
-        from django.db import connection
-        if connection.vendor == 'mysql':
-            logger.debug(f'MySQL detected: Skipping FSM state annotation for {entity_name} (OuterRef incompatibility)')
-            return self
-
-        # Create subquery to get current state using UUID7 natural ordering
-        # This is extremely efficient because:
-        # 1. UUID7 provides natural time ordering (latest = highest ID)
-        # 2. We only fetch the state column, not the entire record
-        # 3. Django optimizes this into a single JOIN or lateral subquery
-        current_state_subquery = Subquery(
-            state_model.objects.filter(**{fk_field: OuterRef('pk')}).order_by('-id').values('state')[:1]
-        )
-
-        # Annotate the queryset with the current state
-        return self.annotate(current_state=current_state_subquery)
+        # MYSQL/MARIADB COMPATIBILITY: Return queryset unchanged
+        # Do not add any annotations that could cause MySQL query failures
+        logger.debug(f'FSM with_state() disabled for MySQL/MariaDB compatibility')
+        return self
