@@ -63,3 +63,6 @@ except IOError:
     FEATURE_FLAGS_FROM_FILE = False
 
 STORAGE_PERSISTENCE = get_bool_env('STORAGE_PERSISTENCE', True)
+import logging
+logger = logging.getLogger(__name__)
+logger.info(f"[STORAGE_PERSISTENCE] Loaded from environment: {STORAGE_PERSISTENCE}")

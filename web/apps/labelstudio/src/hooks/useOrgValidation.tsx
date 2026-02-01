@@ -9,7 +9,16 @@ export const useOrgValidation = (): void => {
   const toast = useToast();
 
   useEffect(() => {
-    if (window.APP_SETTINGS?.flags?.storage_persistence) return;
+    console.log('[useOrgValidation] window.APP_SETTINGS:', window.APP_SETTINGS);
+    console.log('[useOrgValidation] window.APP_SETTINGS?.flags:', window.APP_SETTINGS?.flags);
+    console.log('[useOrgValidation] storage_persistence flag:', window.APP_SETTINGS?.flags?.storage_persistence);
+    
+    if (window.APP_SETTINGS?.flags?.storage_persistence) {
+      console.log('[useOrgValidation] Storage persistence is enabled, skipping warning');
+      return;
+    }
+    
+    console.log('[useOrgValidation] Storage persistence is NOT enabled, showing warning');
     toast.show({
       message: (
         <>

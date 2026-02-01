@@ -203,6 +203,11 @@
     {% endblock %}
 
   }, {% block frontend_settings %}{}{% endblock %});
+  
+  // Debug logging for storage_persistence
+  console.log('[STORAGE_PERSISTENCE] Django setting:', {{ settings.STORAGE_PERSISTENCE|yesno:"true,false" }});
+  console.log('[STORAGE_PERSISTENCE] window.APP_SETTINGS.flags:', window.APP_SETTINGS.flags);
+  console.log('[STORAGE_PERSISTENCE] window.APP_SETTINGS.flags.storage_persistence:', window.APP_SETTINGS.flags.storage_persistence);
 </script>
 
 {% block app-js %}
