@@ -632,32 +632,48 @@ def annotate_storage_filename(queryset: TaskQuerySet) -> TaskQuerySet:
 
 
 def annotate_annotations_results(queryset):
+    from django.db import connection
+    
     if settings.DJANGO_DB == settings.DJANGO_DB_SQLITE:
         return queryset.annotate(
             annotations_results=Coalesce(
                 GroupConcat('annotations__result'), Value(''), output_field=models.CharField()
             )
         )
+    elif connection.vendor == 'mysql':
+        # MySQL doesn't support ArrayAgg properly with DISTINCT
+        return queryset.annotate(annotations_results=Value([], output_field=models.JSONField()))
     else:
         return queryset.annotate(annotations_results=ArrayAgg('annotations__result', distinct=True, default=Value([])))
 
 
 def annotate_predictions_results(queryset):
+    from django.db import connection
+    
     if settings.DJANGO_DB == settings.DJANGO_DB_SQLITE:
         return queryset.annotate(
             predictions_results=Coalesce(
                 GroupConcat('predictions__result'), Value(''), output_field=models.CharField()
             )
         )
+    elif connection.vendor == 'mysql':
+        # MySQL doesn't support ArrayAgg properly with DISTINCT
+        return queryset.annotate(predictions_results=Value([], output_field=models.JSONField()))
     else:
         return queryset.annotate(predictions_results=ArrayAgg('predictions__result', distinct=True, default=Value([])))
 
 
 def annotate_annotators(queryset):
+    from django.db import connection
+    
     if settings.DJANGO_DB == settings.DJANGO_DB_SQLITE:
         return queryset.annotate(
             annotators=Coalesce(GroupConcat('annotations__completed_by'), Value(''), output_field=models.CharField())
         )
+    elif connection.vendor == 'mysql':
+        # MySQL doesn't support ArrayAgg properly with DISTINCT in Django ORM
+        # Return empty array to maintain API compatibility
+        return queryset.annotate(annotators=Value([], output_field=models.JSONField()))
     else:
         return queryset.annotate(annotators=ArrayAgg('annotations__completed_by', distinct=True, default=Value([])))
 
@@ -690,17 +706,27 @@ def annotate_predictions_score(queryset):
 
 
 def annotate_annotations_ids(queryset):
+    from django.db import connection
+    
     if settings.DJANGO_DB == settings.DJANGO_DB_SQLITE:
         return queryset.annotate(annotations_ids=GroupConcat('annotations__id', output_field=models.CharField()))
+    elif connection.vendor == 'mysql':
+        # MySQL doesn't support ArrayAgg properly
+        return queryset.annotate(annotations_ids=Value([], output_field=models.JSONField()))
     else:
         return queryset.annotate(annotations_ids=ArrayAgg('annotations__id', default=Value([])))
 
 
 def annotate_predictions_model_versions(queryset):
+    from django.db import connection
+    
     if settings.DJANGO_DB == settings.DJANGO_DB_SQLITE:
         return queryset.annotate(
             predictions_model_versions=GroupConcat('predictions__model_version', output_field=models.CharField())
         )
+    elif connection.vendor == 'mysql':
+        # MySQL doesn't support ArrayAgg properly
+        return queryset.annotate(predictions_model_versions=Value([], output_field=models.JSONField()))
     else:
         return queryset.annotate(predictions_model_versions=ArrayAgg('predictions__model_version', default=Value([])))
 
